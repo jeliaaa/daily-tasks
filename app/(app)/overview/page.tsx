@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { DayAdder } from "./day-adder";
+import { DayCell, DraggableTask } from "./calendar-dnd";
 import { query } from "@/lib/db";
 import {
   currentMonth,
@@ -21,6 +22,7 @@ type Row = {
   done: boolean;
   by: string | null;
   user_id: number;
+  created_by: number | null;
   username: string;
 };
 
@@ -47,7 +49,7 @@ export default async function OverviewPage({ searchParams }: PageProps<"/overvie
     "SELECT id, username FROM users ORDER BY id",
   );
   const rows = await query<Row>(
-    `SELECT t.id, t.day, t.title, t.description, t.done, t.user_id, u.username,
+    `SELECT t.id, t.day, t.title, t.description, t.done, t.user_id, t.created_by, u.username,
        CASE WHEN t.created_by IS NOT NULL AND t.created_by <> t.user_id
             THEN split_part(c.username, '@', 1) END AS by
      FROM tasks t JOIN users u ON u.id = t.user_id
@@ -130,8 +132,9 @@ export default async function OverviewPage({ searchParams }: PageProps<"/overvie
               perUser.set(r.user_id, c);
             }
             return (
-              <Link
+              <DayCell
                 key={day}
+                day={day}
                 href={`/overview?month=${month}&day=${day}`}
                 className={`min-h-20 border-b border-r border-black/5 p-1.5 text-sm hover:bg-indigo-500/10 dark:border-white/10 ${
                   day === selected ? "bg-indigo-500/15" : ""
@@ -161,7 +164,7 @@ export default async function OverviewPage({ searchParams }: PageProps<"/overvie
                       );
                     })}
                 </div>
-              </Link>
+              </DayCell>
             );
           })}
         </div>
@@ -200,7 +203,12 @@ export default async function OverviewPage({ searchParams }: PageProps<"/overvie
                       </div>
                       <ul className="space-y-1.5 text-sm">
                         {items.map((r) => (
-                          <li key={r.id} className={g.done ? "" : "text-zinc-600"}>
+                          <DraggableTask
+                            key={r.id}
+                            id={r.id}
+                            canMove={r.user_id === me.id || r.created_by === me.id}
+                            className={g.done ? "" : "text-zinc-600"}
+                          >
                             <span className="mr-1">{g.mark}</span>
                             {r.title}
                             {r.by && (
@@ -211,7 +219,7 @@ export default async function OverviewPage({ searchParams }: PageProps<"/overvie
                             {r.description && (
                               <span className="block whitespace-pre-wrap pl-5 text-zinc-500">{r.description}</span>
                             )}
-                          </li>
+                          </DraggableTask>
                         ))}
                       </ul>
                     </div>

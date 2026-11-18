@@ -65,6 +65,18 @@ export async function setTaskDone(id: number, done: boolean) {
   revalidatePath("/overview");
 }
 
+export async function setTaskDay(id: number, day: string) {
+  const user = await requireUser();
+  if (!Number.isInteger(id) || !isDay(day)) return;
+  // The assignee or whoever created the task may reschedule it.
+  await query(
+    "UPDATE tasks SET day = $3 WHERE id = $1 AND (user_id = $2 OR created_by = $2)",
+    [id, user.id, day],
+  );
+  revalidatePath("/tasks");
+  revalidatePath("/overview");
+}
+
 export async function removeTask(id: number) {
   const user = await requireUser();
   if (!Number.isInteger(id)) return;

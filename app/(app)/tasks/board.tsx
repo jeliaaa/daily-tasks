@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useOptimistic, useState, useTransition } from "react";
-import { removeTask, setTaskDone } from "@/lib/actions";
+import { removeTask, setTaskDay, setTaskDone } from "@/lib/actions";
 import { AddTaskModal, useAddShortcuts, type Person } from "../add-task-modal";
 
 export type Task = { id: number; title: string; description: string; done: boolean; by: string | null };
@@ -42,6 +42,14 @@ export function Board({
     });
   }
 
+  function reschedule(id: number, newDay: string) {
+    if (newDay === day) return;
+    startTransition(async () => {
+      apply({ type: "remove", id }); // it leaves this day's board
+      await setTaskDay(id, newDay);
+    });
+  }
+
   function remove(id: number) {
     startTransition(async () => {
       apply({ type: "remove", id });
@@ -62,10 +70,11 @@ export function Board({
             key={String(done)}
             title={done ? "Done" : "To do"}
             done={done}
-            dayLabel={dayLabel}
+            day={day}
             tasks={items.filter((t) => t.done === done)}
             onAdd={() => setModal({ done })}
             onMove={move}
+            onReschedule={reschedule}
             onRemove={remove}
           />
         ))}
@@ -88,17 +97,19 @@ export function Board({
 function Column({
   title,
   done,
-  dayLabel,
+  day,
   tasks,
   onAdd,
   onMove,
+  onReschedule,
   onRemove,
 }: {
   title: string;
   done: boolean;
-  dayLabel: string;
+  day: string;
   tasks: Task[];
   onAdd: () => void;
+  onReschedule: (id: number, day: string) => void;
   onMove: (id: number, done: boolean) => void;
   onRemove: (id: number) => void;
 }) {
@@ -154,8 +165,15 @@ function Column({
             className="cursor-grab rounded-xl border border-black/10 bg-white p-3 shadow-sm active:cursor-grabbing"
           >
             <div className="flex items-start justify-between gap-2">
-              <span className="text-xs text-zinc-500">
-                {dayLabel}
+              <span className="flex flex-wrap items-center text-xs text-zinc-500">
+                <input
+                  type="date"
+                  value={day}
+                  onChange={(e) => e.target.value && onReschedule(t.id, e.target.value)}
+                  aria-label="Change task date"
+                  title="Change date"
+                  className="rounded border border-transparent bg-transparent px-1 hover:border-black/20"
+                />
                 {t.by && <span className="ml-2 rounded bg-indigo-50 px-1.5 py-0.5 text-indigo-700">from {t.by}</span>}
               </span>
               <div className="flex items-center gap-1 text-sm text-zinc-400">
