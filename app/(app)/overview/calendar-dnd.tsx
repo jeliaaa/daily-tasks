@@ -1,10 +1,39 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useTransition, type ReactNode } from "react";
+import { useEffect, useState, useTransition, type ReactNode } from "react";
 import { setTaskDay } from "@/lib/actions";
 
 const MIME = "application/x-task-id";
+const EDGE = 120; // px from viewport edge that triggers auto-scroll
+const MAX_SPEED = 28; // px per frame
+
+// Wheel events don't fire during a native drag, so scroll when the cursor nears the top/bottom.
+function useDragAutoScroll(active: boolean) {
+  useEffect(() => {
+    if (!active) return;
+    let y = -1;
+    let raf = 0;
+    const onOver = (e: DragEvent) => {
+      y = e.clientY;
+    };
+    const tick = () => {
+      if (y >= 0) {
+        const h = window.innerHeight;
+        if (y < EDGE) window.scrollBy(0, -MAX_SPEED * (1 - y / EDGE));
+        else if (y > h - EDGE) window.scrollBy(0, MAX_SPEED * (1 - (h - y) / EDGE));
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    document.addEventListener("dragover", onOver);
+    raf = requestAnimationFrame(tick);
+    return () => {
+      document.removeEventListener("dragover", onOver);
+      cancelAnimationFrame(raf);
+      document.body.removeAttribute("data-task-drag"); // dragend may not fire if the item unmounts
+    };
+  }, [active]);
+}
 
 export function DayCell({
   day,
@@ -62,6 +91,7 @@ export function DraggableTask({
   children: ReactNode;
 }) {
   const [dragging, setDragging] = useState(false);
+  useDragAutoScroll(dragging);
   if (!canMove) return <li className={className}>{children}</li>;
   return (
     <li
