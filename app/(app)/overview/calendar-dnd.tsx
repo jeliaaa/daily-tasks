@@ -39,9 +39,11 @@ export function DayCell({
         if (id) startTransition(() => setTaskDay(id, day));
       }}
       draggable={false}
-      className={`${className} ${over ? "ring-2 ring-inset ring-indigo-500 bg-indigo-500/20" : ""} ${
-        pending ? "opacity-60" : ""
-      }`}
+      className={`${className} transition-colors in-data-[task-drag]:outline-dashed in-data-[task-drag]:outline-1 in-data-[task-drag]:-outline-offset-4 in-data-[task-drag]:outline-indigo-400/60 ${
+        over
+          ? "bg-indigo-500/25 outline-solid! outline-2! -outline-offset-2! outline-indigo-500!"
+          : ""
+      } ${pending ? "opacity-60" : ""}`}
     >
       {children}
     </Link>
@@ -59,6 +61,7 @@ export function DraggableTask({
   className?: string;
   children: ReactNode;
 }) {
+  const [dragging, setDragging] = useState(false);
   if (!canMove) return <li className={className}>{children}</li>;
   return (
     <li
@@ -66,9 +69,17 @@ export function DraggableTask({
       onDragStart={(e) => {
         e.dataTransfer.setData(MIME, String(id));
         e.dataTransfer.effectAllowed = "move";
+        document.body.setAttribute("data-task-drag", "");
+        setDragging(true);
+      }}
+      onDragEnd={() => {
+        document.body.removeAttribute("data-task-drag");
+        setDragging(false);
       }}
       title="Drag onto another day to reschedule"
-      className={`cursor-grab active:cursor-grabbing ${className ?? ""}`}
+      className={`cursor-grab active:cursor-grabbing ${
+        dragging ? "opacity-40 ring-2 ring-indigo-500" : ""
+      } ${className ?? ""}`}
     >
       {children}
     </li>
