@@ -1,6 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useOptimistic, useState, useTransition, type CSSProperties } from "react";
+import {
+  useCallback,
+  useEffect,
+  useOptimistic,
+  useState,
+  useSyncExternalStore,
+  useTransition,
+  type CSSProperties,
+  type DragEvent,
+} from "react";
 import { setTaskDone } from "@/lib/actions";
 import { daysBetween, shortDay, todayStr } from "@/lib/dates";
 import { prioritize, type Prioritizable, type Urgency } from "@/lib/priority";
@@ -41,6 +50,17 @@ const LAYOUTS: { mode: Layout["mode"]; label: string }[] = [
 
 const empty = "rounded-2xl border border-black/10 px-3 py-10 text-center text-sm text-zinc-500";
 
+const DRAG_TYPE = "application/x-task-id";
+
+// Matches Tailwind's "lg", the width from which the two columns can sit side by side.
+const WIDE = "(min-width: 64rem)";
+
+function watchWidth(onChange: () => void) {
+  const media = window.matchMedia(WIDE);
+  media.addEventListener("change", onChange);
+  return () => media.removeEventListener("change", onChange);
+}
+
 /** "Thu, Nov 26", with the year added when it isn't this year. */
 function dateLabel(day: string, today: string) {
   return day.slice(0, 4) === today.slice(0, 4) ? shortDay(day) : `${shortDay(day)}, ${day.slice(0, 4)}`;
@@ -77,6 +97,20 @@ export function TaskList({
   const [tab, setTab] = useState<Tab>("todo");
   const [layout, setLayout] = useState(initialLayout);
   const sideBySide = layout.mode === "split"; // only applies on large screens
+  const wide = useSyncExternalStore(
+    watchWidth,
+    () => window.matchMedia(WIDE).matches,
+    () => false,
+  );
+  // Tasks can be dragged between the columns whenever both are on screen.
+  const canDrag = sideBySide && wide;
+  const [dragged, setDragged] = useState<Task | null>(null);
+  const [over, setOver] = useState<Tab | null>(null);
+
+  function endDrag() {
+    setDragged(null);
+    setOver(null);
+  }
 
   useEffect(() => {
     document.cookie = layoutCookie(layout);
@@ -101,10 +135,20 @@ export function TaskList({
 
   const row = (t: Task, border: string, due: string) => {
     const canManage = t.assignees.includes(meId) || t.createdBy === meId;
+    const draggable = canDrag && canManage;
     return (
       <li
         key={t.id}
-        className={`flex items-start gap-3 rounded-xl border border-l-4 border-black/10 bg-white p-3 shadow-sm ${border}`}
+        draggable={draggable}
+        onDragStart={(e) => {
+          e.dataTransfer.setData(DRAG_TYPE, String(t.id));
+          e.dataTransfer.effectAllowed = "move";
+          setDragged(t);
+        }}
+        onDragEnd={endDrag}
+        className={`flex items-start gap-3 rounded-xl border border-l-4 border-black/10 bg-white p-3 shadow-sm ${border} ${
+          draggable ? "cursor-grab active:cursor-grabbing" : ""
+        } ${dragged?.id === t.id ? "opacity-40" : ""}`}
       >
         <input
           type="checkbox"
@@ -169,7 +213,37 @@ export function TaskList({
     { key: "done", label: "Done", count: finished.length },
   ];
   // Below the large breakpoint only the active tab shows; side by side shows both.
-  const panel = (key: Tab) => `min-w-0 ${tab === key ? "block" : "hidden"} ${sideBySide ? "lg:block" : ""}`;
+  // While a task is dragged, the column it can move to is outlined.
+  const panel = (key: Tab) => {
+    const target = dragged !== null && dragged.done !== (key === "done");
+    const cue = !target
+      ? ""
+      : over === key
+        ? "bg-indigo-500/10 outline-2 outline-offset-4 outline-indigo-500"
+        : "outline-1 outline-offset-4 outline-dashed outline-indigo-400/60";
+    return `min-w-0 rounded-xl transition-colors ${tab === key ? "block" : "hidden"} ${
+      sideBySide ? "lg:block lg:min-h-64" : ""
+    } ${cue}`;
+  };
+  // Dropping a task on the other column finishes or reopens it.
+  const dropZone = (key: Tab) => ({
+    onDragOver: (e: DragEvent) => {
+      if (!dragged || dragged.done === (key === "done") || !e.dataTransfer.types.includes(DRAG_TYPE)) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      setOver(key);
+    },
+    onDragLeave: (e: DragEvent) => {
+      if (!e.currentTarget.contains(e.relatedTarget as Node)) setOver(null);
+    },
+    onDrop: (e: DragEvent) => {
+      e.preventDefault();
+      const id = Number(e.dataTransfer.getData(DRAG_TYPE));
+      const task = items.find((t) => t.id === id);
+      endDrag(); // the dragged card moves away, so its own dragend may never fire
+      if (task && task.done !== (key === "done")) toggle(task);
+    },
+  });
   const columnTitle = `mb-3 hidden text-lg font-semibold ${sideBySide ? "lg:block" : ""}`;
 
   return (
@@ -250,7 +324,7 @@ export function TaskList({
           } as CSSProperties
         }
       >
-        <div id="panel-todo" role="tabpanel" aria-labelledby="tab-todo" className={panel("todo")}>
+        <div id="panel-todo" role="tabpanel" aria-labelledby="tab-todo" className={panel("todo")} {...dropZone("todo")}>
           <h2 className={columnTitle}>
             To do <span className="text-sm font-normal text-zinc-500">{todo.length}</span>
           </h2>
@@ -275,7 +349,7 @@ export function TaskList({
           />
         )}
 
-        <div id="panel-done" role="tabpanel" aria-labelledby="tab-done" className={panel("done")}>
+        <div id="panel-done" role="tabpanel" aria-labelledby="tab-done" className={panel("done")} {...dropZone("done")}>
           <h2 className={columnTitle}>
             Done <span className="text-sm font-normal text-zinc-500">{finished.length}</span>
           </h2>
