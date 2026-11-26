@@ -18,11 +18,13 @@ export async function GET(req: Request) {
   if (!force && !isWorkday()) return Response.json({ skipped: "not a workday" });
 
   const day = todayStr();
-  // "Filled" = the user has at least one task marked done today.
+  // "Filled" = the user finished a task today, or has a done task dated today.
+  // (A task's day is its deadline, so work finished today may carry another date.)
   const missing = await query<{ username: string }>(
     `SELECT u.username FROM users u
      WHERE NOT EXISTS (
-       SELECT 1 FROM tasks t WHERE t.user_id = u.id AND t.day = $1 AND t.done
+       SELECT 1 FROM tasks t WHERE t.user_id = u.id AND t.done
+         AND (t.day = $1 OR (t.done_at AT TIME ZONE 'Asia/Tbilisi')::date = $1::date)
      )
      ORDER BY u.username`,
     [day],

@@ -16,6 +16,7 @@ import {
 
 type Row = {
   id: number;
+  group_id: string;
   day: string;
   title: string;
   description: string;
@@ -49,7 +50,7 @@ export default async function OverviewPage({ searchParams }: PageProps<"/overvie
     "SELECT id, username FROM users ORDER BY id",
   );
   const rows = await query<Row>(
-    `SELECT t.id, t.day, t.title, t.description, t.done, t.user_id, t.created_by, u.username,
+    `SELECT t.id, t.group_id, t.day, t.title, t.description, t.done, t.user_id, t.created_by, u.username,
        CASE WHEN t.created_by IS NOT NULL AND t.created_by <> t.user_id
             THEN split_part(c.username, '@', 1) END AS by
      FROM tasks t JOIN users u ON u.id = t.user_id
@@ -76,6 +77,10 @@ export default async function OverviewPage({ searchParams }: PageProps<"/overvie
         ? today
         : null;
   const selectedRows = selected ? (byDay.get(selected) ?? []) : [];
+  const people = users.map((u) => ({ id: u.id, name: nameOf(u.username) }));
+  // A shared task has one row per assignee, all on the same day.
+  const assigneesOf = new Map<string, number[]>();
+  for (const r of selectedRows) assigneesOf.set(r.group_id, [...(assigneesOf.get(r.group_id) ?? []), r.user_id]);
 
   return (
     <div className="space-y-6">
@@ -177,7 +182,7 @@ export default async function OverviewPage({ searchParams }: PageProps<"/overvie
             <DayAdder
               day={selected}
               dayLabel={prettyDay(selected)}
-              people={users.map((u) => ({ id: u.id, name: nameOf(u.username) }))}
+              people={people}
               meId={me.id}
             />
           </div>
@@ -202,25 +207,36 @@ export default async function OverviewPage({ searchParams }: PageProps<"/overvie
                         {g.label} · {items.length}
                       </div>
                       <ul className="space-y-1.5 text-sm">
-                        {items.map((r) => (
-                          <DraggableTask
-                            key={r.id}
-                            id={r.id}
-                            canMove={r.user_id === me.id || r.created_by === me.id}
-                            className={g.done ? "" : "text-zinc-600"}
-                          >
-                            <span className="mr-1">{g.mark}</span>
-                            {r.title}
-                            {r.by && (
-                              <span className="ml-2 rounded bg-indigo-50 px-1.5 py-0.5 text-xs text-indigo-700">
-                                from {r.by}
-                              </span>
-                            )}
-                            {r.description && (
-                              <span className="block whitespace-pre-wrap pl-5 text-zinc-500">{r.description}</span>
-                            )}
-                          </DraggableTask>
-                        ))}
+                        {items.map((r) => {
+                          const assignees = assigneesOf.get(r.group_id)!;
+                          return (
+                            <DraggableTask
+                              key={r.id}
+                              task={{
+                                id: r.id,
+                                title: r.title,
+                                description: r.description,
+                                deadline: r.day,
+                                assignees,
+                              }}
+                              canManage={assignees.includes(me.id) || r.created_by === me.id}
+                              people={people}
+                              meId={me.id}
+                              className={g.done ? "" : "text-zinc-600"}
+                            >
+                              <span className="mr-1">{g.mark}</span>
+                              {r.title}
+                              {r.by && (
+                                <span className="ml-2 whitespace-nowrap rounded bg-indigo-50 px-1.5 py-0.5 text-xs text-indigo-700">
+                                  from {r.by}
+                                </span>
+                              )}
+                              {r.description && (
+                                <span className="block whitespace-pre-wrap pl-5 text-zinc-500">{r.description}</span>
+                              )}
+                            </DraggableTask>
+                          );
+                        })}
                       </ul>
                     </div>
                   );

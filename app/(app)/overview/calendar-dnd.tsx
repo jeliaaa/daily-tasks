@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 import { useEffect, useState, useTransition, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { setTaskDay } from "@/lib/actions";
+import { AddTaskModal, type EditableTask, type Person } from "../add-task-modal";
 
 const MIME = "application/x-task-id";
 const EDGE = 120; // px from viewport edge that triggers auto-scroll
@@ -79,39 +81,70 @@ export function DayCell({
   );
 }
 
+const actionBtn = "cursor-pointer rounded px-2 py-0.5 text-xs font-medium text-zinc-600 hover:bg-black/10";
+
+/** A task in the day list. Those the user may change can be dragged, edited and copied. */
 export function DraggableTask({
-  id,
-  canMove,
+  task,
+  canManage,
+  people,
+  meId,
   className,
   children,
 }: {
-  id: number;
-  canMove: boolean;
+  task: EditableTask;
+  canManage: boolean;
+  people: Person[];
+  meId: number;
   className?: string;
   children: ReactNode;
 }) {
   const [dragging, setDragging] = useState(false);
+  const [modal, setModal] = useState<"edit" | "copy" | null>(null);
   useDragAutoScroll(dragging);
-  if (!canMove) return <li className={className}>{children}</li>;
+  if (!canManage) return <li className={className}>{children}</li>;
   return (
-    <li
-      draggable
-      onDragStart={(e) => {
-        e.dataTransfer.setData(MIME, String(id));
-        e.dataTransfer.effectAllowed = "move";
-        document.body.setAttribute("data-task-drag", "");
-        setDragging(true);
-      }}
-      onDragEnd={() => {
-        document.body.removeAttribute("data-task-drag");
-        setDragging(false);
-      }}
-      title="Drag onto another day to reschedule"
-      className={`cursor-grab active:cursor-grabbing ${
-        dragging ? "opacity-40 ring-2 ring-indigo-500" : ""
-      } ${className ?? ""}`}
-    >
-      {children}
-    </li>
+    <>
+      <li
+        draggable
+        onDragStart={(e) => {
+          e.dataTransfer.setData(MIME, String(task.id));
+          e.dataTransfer.effectAllowed = "move";
+          document.body.setAttribute("data-task-drag", "");
+          setDragging(true);
+        }}
+        onDragEnd={() => {
+          document.body.removeAttribute("data-task-drag");
+          setDragging(false);
+        }}
+        title="Drag onto another day to reschedule"
+        className={`flex cursor-grab items-start justify-between gap-2 active:cursor-grabbing ${
+          dragging ? "opacity-40 ring-2 ring-indigo-500" : ""
+        } ${className ?? ""}`}
+      >
+        <div className="min-w-0 break-words">{children}</div>
+        <div className="flex shrink-0 gap-1">
+          <button type="button" onClick={() => setModal("edit")} aria-label={`Edit ${task.title}`} className={actionBtn}>
+            Edit
+          </button>
+          <button type="button" onClick={() => setModal("copy")} aria-label={`Copy ${task.title}`} className={actionBtn}>
+            Copy
+          </button>
+        </div>
+      </li>
+      {/* Outside the draggable item, so selecting text in the form can't drag the task. */}
+      {modal &&
+        createPortal(
+          <AddTaskModal
+            day={task.deadline}
+            task={modal === "edit" ? task : undefined}
+            copyFrom={modal === "copy" ? task : undefined}
+            people={people}
+            meId={meId}
+            onClose={() => setModal(null)}
+          />,
+          document.body,
+        )}
+    </>
   );
 }

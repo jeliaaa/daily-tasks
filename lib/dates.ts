@@ -22,6 +22,11 @@ export function shiftDay(day: string, delta: number): string {
   return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`;
 }
 
+/** Whole calendar days from one YYYY-MM-DD to another (negative if "to" is earlier). */
+export function daysBetween(from: string, to: string): number {
+  return Math.round((Date.parse(to) - Date.parse(from)) / 86_400_000);
+}
+
 export function prettyDay(day: string): string {
   const [y, m, d] = day.split("-").map(Number);
   return new Date(y, m - 1, d).toLocaleDateString("en-US", {
